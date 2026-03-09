@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GeoClockIn</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0b0e14; --surface: #131720; --border: #1e2535;
+      --accent: #00e5a0; --accent2: #0097ff; --warn: #ff5f5f;
+      --text: #e8edf5; --muted: #5a6482;
+      --font-head: 'Syne', sans-serif; --font-mono: 'DM Mono', monospace;
+    }
+    body {
+      background: var(--bg); color: var(--text); font-family: var(--font-mono);
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 24px; overflow-x: hidden;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      background-image: linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+      background-size: 40px 40px; pointer-events: none; z-index: 0;
+    }
+    .container { position: relative; z-index: 1; width: 100%; max-width: 480px; }
+    .header { text-align: center; margin-bottom: 36px; }
+    .header h1 {
+      font-family: var(--font-head); font-size: 2.4rem; font-weight: 800; letter-spacing: -1px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .header p { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 6px; }
+    .live-clock { text-align: center; font-family: var(--font-head); font-size: 3.8rem; font-weight: 800; letter-spacing: -2px; color: var(--text); margin-bottom: 4px; line-height: 1; }
+    .live-date { text-align: center; color: var(--muted); font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 32px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; margin-bottom: 16px; }
+    .config-label { font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; display: block; }
+    .config-input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 14px; color: var(--text); font-family: var(--font-mono); font-size: 0.8rem;
+      outline: none; transition: border-color 0.2s; margin-bottom: 16px;
+    }
+    .config-input:focus { border-color: var(--accent2); }
+    .config-input::placeholder { color: var(--muted); }
+    .status-strip {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      border-radius: 8px; background: var(--bg); border: 1px solid var(--border);
+      margin-bottom: 20px; font-size: 0.78rem;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background 0.3s; }
+    .status-dot.ok  { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .status-dot.err { background: var(--warn); }
+    .status-dot.loading { background: var(--accent2); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    #statusText { color: var(--muted); flex: 1; }
+    .coords { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .coord-box { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+    .coord-box.full { grid-column: 1 / -1; }
+    .coord-box .label { font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 3px; }
+    .coord-box .value { font-size: 0.88rem; color: var(--text); }
+    .coord-box .value.small { font-size: 0.76rem; line-height: 1.5; }
+    .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .btn {
+      padding: 14px; border: none; border-radius: 10px; font-family: var(--font-head);
+      font-weight: 700; font-size: 1rem; letter-spacing: 0.03em; cursor: pointer;
+      transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-in  { background: linear-gradient(135deg, var(--accent), #00b87a); color: #0b0e14; }
+    .btn-in:not(:disabled):hover  { box-shadow: 0 4px 24px rgba(0,229,160,0.3); }
+    .btn-out { background: linear-gradient(135deg, var(--warn), #d94040); color: #fff; }
+    .btn-out:not(:disabled):hover { box-shadow: 0 4px 24px rgba(255,95,95,0.3); }
+    .log-title { font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .log-clear { color: var(--muted); font-size: 0.65rem; cursor: pointer; border: none; background: none; font-family: var(--font-mono); letter-spacing: 0.1em; transition: color 0.2s; }
+    .log-clear:hover { color: var(--warn); }
+    .log-list { display: flex; flex-direction: column; gap: 8px; }
+    .log-entry { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 0.75rem; display: flex; gap: 10px; align-items: flex-start; animation: slideIn 0.3s ease; }
+    @keyframes slideIn { from { opacity:0; transform: translateY(-6px); } to { opacity:1; transform: translateY(0); } }
+    .log-badge { font-size: 0.6rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.08em; flex-shrink: 0; }
+    .badge-in  { background: rgba(0,229,160,0.15); color: var(--accent); }
+    .badge-out { background: rgba(255,95,95,0.15);  color: var(--warn); }
+    .badge-err { background: rgba(255,160,0,0.15);  color: #ffaa00; }
+    .log-info { flex: 1; min-width: 0; }
+    .log-time { color: var(--text); font-weight: 500; }
+    .log-meta { color: var(--muted); font-size: 0.7rem; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .setup-hint { background: rgba(0,151,255,0.05); border: 1px solid rgba(0,151,255,0.2); border-radius: 12px; padding: 20px; font-size: 0.78rem; line-height: 1.7; }
+    .setup-hint h3 { font-family: var(--font-head); font-size: 0.85rem; color: var(--accent2); margin-bottom: 10px; letter-spacing: 0.05em; }
+    .setup-hint ol { padding-left: 18px; color: var(--muted); }
+    .setup-hint li { margin-bottom: 6px; }
+    .setup-hint strong { color: var(--text); }
+    .setup-hint a { color: var(--accent2); text-decoration: none; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+    .toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 22px; font-size: 0.8rem; color: var(--text); z-index: 100;
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); white-space: nowrap;
+    }
+    .toast.show    { transform: translateX(-50%) translateY(0); }
+    .toast.success { border-color: var(--accent); color: var(--accent); }
+    .toast.error   { border-color: var(--warn);   color: var(--warn); }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>GeoClockIn</h1>
+    <p>Location-aware attendance tracker</p>
+  </div>
+
+  <div class="live-clock" id="liveClock">--:--:--</div>
+  <div class="live-date"  id="liveDate">Loading...</div>
+
+  <div class="card">
+
+
+    <span class="config-label">Employee Name</span>
+    <input class="config-input" type="text" id="empName" placeholder="Your name" style="margin-bottom:0"/>
+
+    <hr class="divider"/>
+
+    <div class="status-strip">
+      <div class="status-dot loading" id="statusDot"></div>
+      <span id="statusText">Requesting location…</span>
+    </div>
+
+    <div class="coords">
+      <div class="coord-box">
+        <span class="label">Latitude</span>
+        <span class="value" id="latVal">—</span>
+      </div>
+      <div class="coord-box">
+        <span class="label">Longitude</span>
+        <span class="value" id="lngVal">—</span>
+      </div>
+      <div class="coord-box">
+        <span class="label">Accuracy</span>
+        <span class="value" id="accVal">—</span>
+      </div>
+      <div class="coord-box">
+        <span class="label">Last Update</span>
+        <span class="value" id="geoTime">—</span>
+      </div>
+      <div class="coord-box full">
+        <span class="label">Address</span>
+        <span class="value small" id="addrVal">Waiting for location…</span>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-in"  id="btnIn"  onclick="clockAction('IN')"  disabled>▶ Clock In</button>
+      <button class="btn btn-out" id="btnOut" onclick="clockAction('OUT')" disabled>■ Clock Out</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="log-title">
+      <span>Recent Activity</span>
+      <button class="log-clear" onclick="clearLog()">Clear</button>
+    </div>
+    <div class="log-list" id="logList">
+      <div style="color:var(--muted);font-size:0.75rem;text-align:center;padding:10px 0;">No entries yet</div>
+    </div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  let geo = null;
+  let currentAddress = '';
+  let actLog = JSON.parse(localStorage.getItem('geoclockin_log') || '[]');
+
+  // ── Live clock ───────────────────────────────────────
+  function updateClock() {
+    const n = new Date();
+    document.getElementById('liveClock').textContent = n.toLocaleTimeString('en-US', { hour12: false });
+    document.getElementById('liveDate').textContent  = n.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // ── Status helper ────────────────────────────────────
+  function setStatus(state, msg) {
+    document.getElementById('statusDot').className  = 'status-dot ' + state;
+    document.getElementById('statusText').textContent = msg;
+  }
+
+  // ── Reverse geocode (Nominatim - detailed address, CORS-enabled) ──────────
+  let geocodeDone = false;
+
+  async function reverseGeocode(lat, lng) {
+    geocodeDone = false;
+    document.getElementById('btnIn').disabled  = true;
+    document.getElementById('btnOut').disabled = true;
+    document.getElementById('addrVal').textContent = 'Resolving address...';
+    try {
+      // Use Nominatim via a CORS proxy for full detailed address
+      const nominatimUrl = 'https://nominatim.openstreetmap.org/reverse'
+        + '?lat=' + lat + '&lon=' + lng
+        + '&format=json&addressdetails=1&zoom=18&accept-language=en';
+      const r = await fetch(nominatimUrl, {
+        headers: { 'User-Agent': 'GeoClockIn/1.0' }
+      });
+      const d = await r.json();
+      if (d && d.address) {
+        const a = d.address;
+        // Build detailed address: house number + road, suburb, city, postcode, state, country
+        const road = (a.house_number ? a.house_number + ' ' : '') + (a.road || a.pedestrian || a.footway || a.path || '');
+        const parts = [
+          road,
+          a.neighbourhood || a.suburb || a.quarter || a.residential || '',
+          a.city || a.town || a.village || a.municipality || '',
+          a.postcode || '',
+          a.state || '',
+          a.country || ''
+        ].filter(Boolean);
+        // Also keep display_name as reference if parts are too few
+        currentAddress = parts.length >= 2 ? parts.join(', ') : (d.display_name || (lat.toFixed(5) + ', ' + lng.toFixed(5)));
+      } else {
+        throw new Error('no address');
+      }
+    } catch (e) {
+      // Fallback to BigDataCloud if Nominatim fails
+      try {
+        const r2 = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client'
+          + '?latitude=' + lat + '&longitude=' + lng + '&localityLanguage=en');
+        const d2 = await r2.json();
+        const parts2 = [
+          d2.locality || d2.city,
+          d2.principalSubdivision,
+          d2.postcode,
+          d2.countryName
+        ].filter(Boolean);
+        currentAddress = parts2.length ? parts2.join(', ') : (lat.toFixed(5) + ', ' + lng.toFixed(5));
+      } catch (e2) {
+        currentAddress = lat.toFixed(5) + ', ' + lng.toFixed(5);
+      }
+    }
+    document.getElementById('addrVal').textContent = currentAddress;
+    geocodeDone = true;
+    document.getElementById('btnIn').disabled  = false;
+    document.getElementById('btnOut').disabled = false;
+  }
+
+  // ── Geolocation ──────────────────────────────────────
+  let lastGeoKey = '';
+
+  async function onGeoSuccess(pos) {
+    geo = pos.coords;
+    document.getElementById('latVal').textContent  = geo.latitude.toFixed(6);
+    document.getElementById('lngVal').textContent  = geo.longitude.toFixed(6);
+    document.getElementById('accVal').textContent  = Math.round(geo.accuracy) + ' m';
+    document.getElementById('geoTime').textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+    setStatus('ok', 'Location acquired');
+    const key = geo.latitude.toFixed(3) + ',' + geo.longitude.toFixed(3);
+    if (key !== lastGeoKey) {
+      lastGeoKey = key;
+      await reverseGeocode(geo.latitude, geo.longitude);
+    } else if (geocodeDone) {
+      document.getElementById('btnIn').disabled  = false;
+      document.getElementById('btnOut').disabled = false;
+    }
+  }
+
+  function onGeoError(err) {
+    setStatus('err', 'Location error: ' + err.message);
+    document.getElementById('addrVal').textContent = 'Location unavailable';
+    document.getElementById('btnIn').disabled  = false;
+    document.getElementById('btnOut').disabled = false;
+  }
+
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(onGeoSuccess, onGeoError, { enableHighAccuracy: true, maximumAge: 30000 });
+  } else {
+    setStatus('err', 'Geolocation not supported');
+  }
+
+  // ── Clock action ─────────────────────────────────────
+  async function clockAction(action) {
+    const url  = 'https://script.google.com/macros/s/AKfycbzwNdr9WFQnhvxLOIEARIVs6CVWgaqvOykGGnYge2beLm_hLFgWbFfhIu0C1myuJG4KuQ/exec';
+    const name = document.getElementById('empName').value.trim() || 'Anonymous';
+
+    document.getElementById('btnIn').disabled  = true;
+    document.getElementById('btnOut').disabled = true;
+    setStatus('loading', 'Sending to Google Sheets…');
+
+    const now = new Date();
+    const params = new URLSearchParams({
+      name,
+      action,
+      latitude:  geo ? geo.latitude.toFixed(6)  : '',
+      longitude: geo ? geo.longitude.toFixed(6) : '',
+      accuracy:  geo ? Math.round(geo.accuracy)  : '',
+      address:   currentAddress,
+      date: now.toLocaleDateString('en-US'),
+      time: now.toLocaleTimeString('en-US', { hour12: false })
+    });
+
+    try {
+      // Simple GET with no-cors — Apps Script doGet handles this cleanly
+      await fetch(`${url}?${params.toString()}`, { method: 'GET', mode: 'no-cors' });
+      addLog({ action, name, address: currentAddress,
+               time: now.toLocaleTimeString('en-US',{hour12:false}),
+               date: now.toLocaleDateString('en-US'), ok: true });
+      setStatus('ok', 'Sent to Sheets ✓');
+      showToast(action === 'IN' ? '✓ Clocked In' : '✓ Clocked Out', 'success');
+    } catch {
+      addLog({ action, name, address: currentAddress,
+               time: now.toLocaleTimeString('en-US',{hour12:false}),
+               date: now.toLocaleDateString('en-US'), ok: false });
+      setStatus('err', 'Send failed — check URL');
+      showToast('Failed to reach Google Sheets', 'error');
+    } finally {
+      document.getElementById('btnIn').disabled  = false;
+      document.getElementById('btnOut').disabled = false;
+    }
+  }
+
+  // ── Activity log ─────────────────────────────────────
+  function addLog(entry) {
+    actLog.unshift(entry);
+    if (actLog.length > 20) actLog.pop();
+    localStorage.setItem('geoclockin_log', JSON.stringify(actLog));
+    renderLog();
+  }
+
+  function renderLog() {
+    const list = document.getElementById('logList');
+    if (!actLog.length) {
+      list.innerHTML = '<div style="color:var(--muted);font-size:0.75rem;text-align:center;padding:10px 0;">No entries yet</div>';
+      return;
+    }
+    list.innerHTML = actLog.map(e => `
+      <div class="log-entry">
+        <span class="log-badge ${e.ok ? (e.action==='IN'?'badge-in':'badge-out') : 'badge-err'}">
+          ${e.ok ? e.action : 'ERR'}
+        </span>
+        <div class="log-info">
+          <div class="log-time">${e.name} — ${e.time} · ${e.date}</div>
+          <div class="log-meta">${e.address || 'No address'}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  function clearLog() {
+    actLog = [];
+    localStorage.removeItem('geoclockin_log');
+    renderLog();
+  }
+  renderLog();
+
+  // ── Toast ────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + type;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.className = 'toast', 3200);
+  }
+
+  // ── Persist settings ──────────────────────────────────
+  const nameEl = document.getElementById('empName');
+  nameEl.value = localStorage.getItem('empName') || '';
+  nameEl.addEventListener('input', () => localStorage.setItem('empName', nameEl.value));
+</script>
+</body>
+</html>
